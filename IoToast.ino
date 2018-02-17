@@ -7,11 +7,10 @@
 #define SEL_PIN                         5
 #define CF1_PIN                         13
 #define CF_PIN                          14
-#define BUZZER1 1
-#define BUZZER2 3
+#define BUZZER 3
 
 // Check values every 10 seconds
-#define STATUS_INTERVAL 60000UL
+#define STATUS_INTERVAL 1000UL
 
 // Set SEL_PIN to HIGH to sample current
 // This is the case for Itead's Sonoff POW, where a
@@ -51,15 +50,12 @@ void buzz_sound(long buzz_length_ms, int buzz_delay_us) {
   while (buzz_length_us > (buzz_delay_us * 2)) {
     buzz_length_us -= buzz_delay_us * 2; //Decrease the remaining play time
     // Toggle the buzzer at various speeds
-    digitalWrite(BUZZER1, LOW);
-    digitalWrite(BUZZER2, HIGH);
+    digitalWrite(BUZZER, LOW);
     delayMicroseconds(buzz_delay_us);
-    digitalWrite(BUZZER1, HIGH);
-    digitalWrite(BUZZER2, LOW);
+    digitalWrite(BUZZER, HIGH);
     delayMicroseconds(buzz_delay_us);
   }
-  digitalWrite(BUZZER1, LOW);
-  digitalWrite(BUZZER2, LOW);
+  digitalWrite(BUZZER, LOW);
 }
 
 // When using interrupts we have to call the library entry point
@@ -94,10 +90,8 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, HIGH);
 
-  pinMode(BUZZER1, OUTPUT);
-  pinMode(BUZZER2, OUTPUT);
-  digitalWrite(BUZZER1, LOW);
-  digitalWrite(BUZZER2, LOW);
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
 
   // Initialize HLW8012
   // void begin(unsigned char cf_pin, unsigned char cf1_pin, unsigned char sel_pin, unsigned char currentWhen = HIGH, bool use_interrupts = false, unsigned long pulse_timeout = PULSE_TIMEOUT);
@@ -105,7 +99,10 @@ void setup() {
   // * currentWhen is the value in sel_pin to select current sampling
   // * set use_interrupts to true to use interrupts to monitor pulse widths
   // * leave pulse_timeout to the default value, recommended when using interrupts
+
   hlw8012.begin(CF_PIN, CF1_PIN, SEL_PIN, CURRENT_MODE, true);
+  //hlw8012.begin(CF_PIN, CF1_PIN, SEL_PIN, CURRENT_MODE, false, 500000);
+
 
   // These values are used to calculate current, voltage and power factors as per datasheet formula
   // These are the nominal values for the Sonoff POW resistors:
@@ -129,58 +126,7 @@ void callback(char* topic, byte* payload, unsigned int length, PubSubClient *cli
 void connectSuccess(PubSubClient* client, char* ip) {
 }
 
-char *ftoa(char *a, double f, int precision) {
-  long p[] = {
-    0,10,100,1000,10000,100000,1000000,10000000,100000000  };
-
-  char *ret = a;
-  long heiltal = (long)f;
-  itoa(heiltal, a, 10);
-  while (*a != '\0') a++;
-  *a++ = '.';
-  long decimal = abs((long)((f - heiltal) * p[precision]));
-  itoa(decimal, a, 10);
-  return ret;
-}
 void connectedLoop(PubSubClient* client) {
-  static unsigned long nextStatus = 0UL;
-
-  if( (long)( millis() - nextStatus ) >= 0) {
-    nextStatus = millis() + STATUS_INTERVAL;
-    // Serial.print("[HLW] Active Power (W)    : "); Serial.println(hlw8012.getActivePower());
-    // Serial.print("[HLW] Voltage (V)         : "); Serial.println(hlw8012.getVoltage());
-    // Serial.print("[HLW] Current (A)         : "); Serial.println(hlw8012.getCurrent());
-    // Serial.print("[HLW] Apparent Power (VA) : "); Serial.println(hlw8012.getApparentPower());
-    // Serial.print("[HLW] Power Factor (%)    : "); Serial.println((int) (100 * hlw8012.getPowerFactor()));
-    // Serial.print("[HLW] Agg. energy (Ws)    : "); Serial.println(hlw8012.getEnergy());
-    // Serial.println();
-
-    sprintf(topicBuf, "stat/%s/active-power", fullTopic);
-    ftoa(buf, hlw8012.getActivePower(), 4);
-    client->publish(topicBuf, buf);
-
-    sprintf(topicBuf, "stat/%s/voltage", fullTopic);
-    ftoa(buf, hlw8012.getVoltage(), 4);
-    client->publish(topicBuf, buf);
-
-    sprintf(topicBuf, "stat/%s/current", fullTopic);
-    ftoa(buf, hlw8012.getCurrent(), 4);
-    client->publish(topicBuf, buf);
-
-    sprintf(topicBuf, "stat/%s/apparent-power", fullTopic);
-    ftoa(buf, hlw8012.getApparentPower(), 4);
-    client->publish(topicBuf, buf);
-
-    sprintf(topicBuf, "stat/%s/power-factor", fullTopic);
-    sprintf(buf, "%d", (int) (100 * hlw8012.getPowerFactor()));
-    client->publish(topicBuf, buf);
-
-    sprintf(topicBuf, "stat/%s/energy", fullTopic);
-    ftoa(buf, hlw8012.getEnergy(), 4);
-    client->publish(topicBuf, buf);
-
-  }
-
   static unsigned long nextCheck = 0UL;
   static bool lastState = false;
   //said you can't check faster than twice interrrupt number or something.
@@ -188,15 +134,70 @@ void connectedLoop(PubSubClient* client) {
 
   if( (long)( millis() - nextCheck ) >= 0) {
     nextCheck = millis() + checkInterval;
-    if(hlw8012.getActivePower() == 0) {
+    sprintf(topicBuf, "stat/%s/check", fullTopic);
+    client->publish(topicBuf, "check?");
+
+    static unsigned long nextStatus = 0UL;
+
+    if( (long)( millis() - nextStatus ) >= 0) {
+      nextStatus = millis() + STATUS_INTERVAL;
+      // Serial.print("[HLW] Active Power (W)    : "); Serial.println(hlw8012.getActivePower());
+      // Serial.print("[HLW] Voltage (V)         : "); Serial.println(hlw8012.getVoltage());
+      // Serial.print("[HLW] Current (A)         : "); Serial.println(hlw8012.getCurrent());
+      // Serial.print("[HLW] Apparent Power (VA) : "); Serial.println(hlw8012.getApparentPower());
+      // Serial.print("[HLW] Power Factor (%)    : "); Serial.println((int) (100 * hlw8012.getPowerFactor()));
+      // Serial.print("[HLW] Agg. energy (Ws)    : "); Serial.println(hlw8012.getEnergy());
+      // Serial.println();
+
+      sprintf(topicBuf, "stat/%s/active-power", fullTopic);
+      dtostrf(hlw8012.getActivePower(), 1023, 2, buf);
+      client->publish(topicBuf, buf);
+
+      sprintf(topicBuf, "stat/%s/voltage", fullTopic);
+      dtostrf(hlw8012.getVoltage(), 1023, 2, buf);
+      client->publish(topicBuf, buf);
+
+      sprintf(topicBuf, "stat/%s/current", fullTopic);
+      dtostrf(hlw8012.getCurrent(), 1023, 2, buf);
+      client->publish(topicBuf, buf);
+
+      sprintf(topicBuf, "stat/%s/apparent-power", fullTopic);
+      dtostrf(hlw8012.getApparentPower(), 1023, 2, buf);
+      client->publish(topicBuf, buf);
+
+      sprintf(topicBuf, "stat/%s/power-factor", fullTopic);
+      sprintf(buf, "%d", (int) (100 * hlw8012.getPowerFactor()));
+      client->publish(topicBuf, buf);
+
+      sprintf(topicBuf, "stat/%s/energy", fullTopic);
+      dtostrf(hlw8012.getEnergy(), 1023, 2, buf);
+      client->publish(topicBuf, buf);
+
+    }
+
+    if(hlw8012.getCurrent() < 0.04) {
       if(lastState == true) {
         sprintf(topicBuf, "stat/%s/done", fullTopic);
-        client->publish(topicBuf, "ding\a");
+        client->publish(topicBuf, "ding?\a");
+        dtostrf(hlw8012.getCurrent(), 1023, 2, buf);
+        client->publish(topicBuf, buf);
+      }
+    }
+
+    nextCheck = millis() + checkInterval;
+    if(hlw8012.getCurrent() < 0.04) {
+      if(lastState == true) {
+        //falling edge buzz
+        buzz_sound(15000, 1500);
         lastState = false;
       }
     } else {
       lastState = true;
     }
+    // // When not using interrupts we have to manually switch to current or voltage monitor
+    // // This means that every time we get into the conditional we only update one of them
+    // // while the other will return the cached value.
+    // hlw8012.toggleMode();
   }
 }
 
@@ -206,15 +207,19 @@ void loop() {
   static bool lastState = false;
 
   if( (long)( millis() - nextCheck ) >= 0) {
-    nextCheck = millis() + checkInterval;
-    if(hlw8012.getActivePower() == 0) {
-      if(lastState == true) {
-        //falling edge buzz
-        buzz_sound(15000, 1500);
-        lastState = false;
-      }
-    } else {
-      lastState = true;
-    }
+    // nextCheck = millis() + checkInterval;
+    // if(hlw8012.getCurrent() < 0.42) {
+    //   if(lastState == true) {
+    //     //falling edge buzz
+    //     buzz_sound(15000, 1500);
+    //     lastState = false;
+    //   }
+    // } else {
+    //   lastState = true;
+    // }
+    // // When not using interrupts we have to manually switch to current or voltage monitor
+    // // This means that every time we get into the conditional we only update one of them
+    // // while the other will return the cached value.
+    // hlw8012.toggleMode();
   }
 }
