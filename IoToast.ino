@@ -8,9 +8,16 @@
 #define CF1_PIN                         13
 #define CF_PIN                          14
 #define BUZZER 3
+// or 13
+#define LED 15
+#define BUTTON 0
 
 // Check values every 10 seconds
+/*
 #define STATUS_INTERVAL 1000UL
+/*/
+#define STATUS_INTERVAL 420000UL
+// */
 
 // Set SEL_PIN to HIGH to sample current
 // This is the case for Itead's Sonoff POW, where a
@@ -39,7 +46,7 @@ char topicBuf[1024];
 
 //said you can't check faster than twice interrrupt number or something.
 //Somethingsomething default 2 seconds.
-static unsigned long checkInterval = 2000UL;
+static unsigned long checkInterval = 3000UL;
 
 // Toggle buzzer every buzz_delay_us, for a duration of buzz_length_ms.
 
@@ -48,12 +55,15 @@ void buzz_sound(long buzz_length_ms, int buzz_delay_us) {
   long buzz_length_us = buzz_length_ms * (long)1000;
   // Loop until the remaining play time is less than a single buzz_delay_us
   while (buzz_length_us > (buzz_delay_us * 2)) {
-    buzz_length_us -= buzz_delay_us * 2; //Decrease the remaining play time
+    buzz_length_us -= 200000; //buzz_delay_us * 2; //Decrease the remaining play time
     // Toggle the buzzer at various speeds
     digitalWrite(BUZZER, LOW);
-    delayMicroseconds(buzz_delay_us);
+    // delayMicroseconds(buzz_delay_us);
+    // //digitalWrite(BUZZER, HIGH);
+    // delayMicroseconds(buzz_delay_us);
+    delay(1);
     digitalWrite(BUZZER, HIGH);
-    delayMicroseconds(buzz_delay_us);
+    delay(1);
   }
   digitalWrite(BUZZER, LOW);
 }
@@ -74,6 +84,7 @@ void setInterrupts() {
 }
 
 void setup() {
+  //Serial.begin(115200);
 
   mqtt_options.connectedLoop = connectedLoop;
   mqtt_options.callback = callback;
@@ -92,6 +103,9 @@ void setup() {
 
   pinMode(BUZZER, OUTPUT);
   digitalWrite(BUZZER, LOW);
+
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, LOW);
 
   // Initialize HLW8012
   // void begin(unsigned char cf_pin, unsigned char cf1_pin, unsigned char sel_pin, unsigned char currentWhen = HIGH, bool use_interrupts = false, unsigned long pulse_timeout = PULSE_TIMEOUT);
@@ -157,7 +171,7 @@ void connectedLoop(PubSubClient* client) {
       dtostrf(hlw8012.getVoltage(), 1023, 2, buf);
       client->publish(topicBuf, buf);
 
-      sprintf(topicBuf, "stat/%s/current", fullTopic);
+      sprintf(topicBuf, "stat/%s/currentA", fullTopic);
       dtostrf(hlw8012.getCurrent(), 1023, 2, buf);
       client->publish(topicBuf, buf);
 
@@ -183,21 +197,6 @@ void connectedLoop(PubSubClient* client) {
         client->publish(topicBuf, buf);
       }
     }
-
-    nextCheck = millis() + checkInterval;
-    if(hlw8012.getCurrent() < 0.04) {
-      if(lastState == true) {
-        //falling edge buzz
-        buzz_sound(15000, 1500);
-        lastState = false;
-      }
-    } else {
-      lastState = true;
-    }
-    // // When not using interrupts we have to manually switch to current or voltage monitor
-    // // This means that every time we get into the conditional we only update one of them
-    // // while the other will return the cached value.
-    // hlw8012.toggleMode();
   }
 }
 
@@ -207,19 +206,21 @@ void loop() {
   static bool lastState = false;
 
   if( (long)( millis() - nextCheck ) >= 0) {
-    // nextCheck = millis() + checkInterval;
-    // if(hlw8012.getCurrent() < 0.42) {
-    //   if(lastState == true) {
-    //     //falling edge buzz
-    //     buzz_sound(15000, 1500);
-    //     lastState = false;
-    //   }
-    // } else {
-    //   lastState = true;
-    // }
-    // // When not using interrupts we have to manually switch to current or voltage monitor
-    // // This means that every time we get into the conditional we only update one of them
-    // // while the other will return the cached value.
-    // hlw8012.toggleMode();
+    nextCheck = millis() + checkInterval;
+
+    //IMPORTANT FOR REASONS
+    hlw8012.getPowerFactor();
+
+    if(hlw8012.getCurrent() < 0.04) {
+      if(lastState == true) {
+        //falling edge buzz
+        buzz_sound(15000, 1500);
+        lastState = false;
+        digitalWrite(LED, 0);
+      }
+    } else {
+      lastState = true;
+      digitalWrite(LED, 1);
+    }
   }
 }
