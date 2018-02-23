@@ -46,7 +46,7 @@ char topicBuf[1024];
 
 //said you can't check faster than twice interrrupt number or something.
 //Somethingsomething default 2 seconds.
-static unsigned long checkInterval = 3000UL;
+static unsigned long checkInterval = 2000UL;
 
 // Toggle buzzer every buzz_delay_us, for a duration of buzz_length_ms.
 
@@ -55,12 +55,9 @@ void buzz_sound(long buzz_length_ms, int buzz_delay_us) {
   long buzz_length_us = buzz_length_ms * (long)1000;
   // Loop until the remaining play time is less than a single buzz_delay_us
   while (buzz_length_us > (buzz_delay_us * 2)) {
-    buzz_length_us -= 200000; //buzz_delay_us * 2; //Decrease the remaining play time
+    buzz_length_us -= 20000; //buzz_delay_us * 2; //Decrease the remaining play time
     // Toggle the buzzer at various speeds
     digitalWrite(BUZZER, LOW);
-    // delayMicroseconds(buzz_delay_us);
-    // //digitalWrite(BUZZER, HIGH);
-    // delayMicroseconds(buzz_delay_us);
     delay(1);
     digitalWrite(BUZZER, HIGH);
     delay(1);
@@ -140,18 +137,31 @@ void callback(char* topic, byte* payload, unsigned int length, PubSubClient *cli
 void connectSuccess(PubSubClient* client, char* ip) {
 }
 
+unsigned long nextCheck = 0UL;
+bool lastState = false;
+
 void connectedLoop(PubSubClient* client) {
-  static unsigned long nextCheck = 0UL;
-  static bool lastState = false;
   //said you can't check faster than twice interrrupt number or something.
   //Somethingsomething default 2 seconds.
 
   if( (long)( millis() - nextCheck ) >= 0) {
-    nextCheck = millis() + checkInterval;
-    sprintf(topicBuf, "stat/%s/check", fullTopic);
-    client->publish(topicBuf, "check?");
+    // sprintf(topicBuf, "stat/%s/check", fullTopic);
+    // client->publish(topicBuf, "check?");
 
     static unsigned long nextStatus = 0UL;
+
+    //IMPORTANT FOR REASONS
+    hlw8012.getPowerFactor();
+
+    if(hlw8012.getCurrent() < 0.04) {
+      if(lastState == true) {
+        sprintf(topicBuf, "stat/%s/done", fullTopic);
+        client->publish(topicBuf, "ding?\a");
+        dtostrf(hlw8012.getCurrent(), 1023, 2, buf);
+        client->publish(topicBuf, buf);
+        nextStatus -= STATUS_INTERVAL; //just make it happen now
+      }
+    }
 
     if( (long)( millis() - nextStatus ) >= 0) {
       nextStatus = millis() + STATUS_INTERVAL;
@@ -189,21 +199,11 @@ void connectedLoop(PubSubClient* client) {
 
     }
 
-    if(hlw8012.getCurrent() < 0.04) {
-      if(lastState == true) {
-        sprintf(topicBuf, "stat/%s/done", fullTopic);
-        client->publish(topicBuf, "ding?\a");
-        dtostrf(hlw8012.getCurrent(), 1023, 2, buf);
-        client->publish(topicBuf, buf);
-      }
-    }
   }
 }
 
 void loop() {
   loop_mqtt();
-  static unsigned long nextCheck = 0UL;
-  static bool lastState = false;
 
   if( (long)( millis() - nextCheck ) >= 0) {
     nextCheck = millis() + checkInterval;
@@ -214,9 +214,9 @@ void loop() {
     if(hlw8012.getCurrent() < 0.04) {
       if(lastState == true) {
         //falling edge buzz
+        digitalWrite(LED, 0);
         buzz_sound(15000, 1500);
         lastState = false;
-        digitalWrite(LED, 0);
       }
     } else {
       lastState = true;
